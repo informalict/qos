@@ -2,7 +2,7 @@ The QOS (Quality of service) package provides:
 - bandwidth rate limiting.
 
 
-Rate bandwidth listener allows for limiting bytes which can be sent within some time.
+Rate bandwidth allows for limiting bytes which can be sent or retrieved within some time.
 
 Example usage for HTTP server:
 ```go
