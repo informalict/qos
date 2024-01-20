@@ -54,8 +54,6 @@ func NewListener(ctx context.Context, l net.Listener) *listener {
 // GetConnCfgs returns write and read connection config.
 // It also returns channel, which will be closed when configuration is changed.
 func (bl *listener) GetConnCfgs() (<-chan struct{}, config, config) {
-	// Here mutex blocks new connections and writing into a connection,
-	// but since it happens once in a lifetime, and it is quick non-blocking operation it is allowed.
 	bl.mutex.RLock()
 	defer bl.mutex.RUnlock()
 
@@ -106,7 +104,8 @@ func (bl *listener) SetConnLimits(writeConn, readConn config) {
 	}
 
 	// Inform all existing connections about new configuration by closing channel.
-	// Create a new channel which will be closed when config changes next time.
+	// Create a new channel which will be closed when config changes next time, so
+	// connection will be informed once again.
 	close(bl.c)
 	bl.c = make(chan struct{})
 

@@ -48,10 +48,11 @@ func main() {
 
 # Run unit tests
 
+Run all tests:
 ```shell
 go test ./... -v
 ```
-or
+or run only shorter test:
 ```shell
 go test ./... -v -short
 ```

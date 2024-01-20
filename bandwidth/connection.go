@@ -8,6 +8,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// globalLimitController is an internal interface which allows for connection
+// to get access to listener's data.
+// So the whole object listener does not have to be provided to connection.
 type globalLimitController interface {
 	// GetConnCfgs returns current write and read connection config.
 	// It returns also a channel which will be closed when config is changed again.

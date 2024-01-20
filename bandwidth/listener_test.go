@@ -697,7 +697,7 @@ func TestChangeLimits(tOuter *testing.T) {
 		howManyBytes := 50
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, gr := bl.GetConnLimits()
+		_, gr := bl.GetGlobalLimits()
 
 		setGlobalLimits(bl, NewConfig(rate1), gr)
 		conn := acceptT(t, bl)
@@ -731,7 +731,7 @@ func TestChangeLimits(tOuter *testing.T) {
 		howManyBytes := 50
 
 		bl := NewListener(context.Background(), mockListener{})
-		gw, _ := bl.GetConnLimits()
+		gw, _ := bl.GetGlobalLimits()
 		setGlobalLimits(bl, gw, NewConfig(rate1))
 		conn := acceptT(t, bl)
 		b := newSlice(int(rate1))
