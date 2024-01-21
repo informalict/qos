@@ -36,7 +36,7 @@ func main() {
 	bl := bandwidth.NewListener(context.Background(), ln)
 
 	bytesPerSecond := 1000
-	// burst describes how many bytes can be performed within on call of rate limiter.
+	// burst describes how many bytes can be performed within one call of rate limiter.
 	// usually it is the same value as bytesPerSecond.
 	burst := 1000
 	writeBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
