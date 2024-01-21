@@ -32,10 +32,15 @@ func main() {
 	if err != nil {
 		log.Fatal("can not create tcp listner")
 	}
-	//By default there are not Limits.
+	//By default, there are no Limits.
 	bl := bandwidth.NewListener(context.Background(), ln)
 
-	writeBytesPerSecond, readBytesPerSecond := bandwidth.NewConfig(1000), bandwidth.NewConfig(2000)
+	bytesPerSecond := 1000
+	// burst describes how many bytes can be performed within on call of rate limiter.
+	// usually it is the same value as bytesPerSecond.
+	burst := 1000
+	writeBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
+	readBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
 	bl.SetGlobalLimits(writeBytesPerSecond, readBytesPerSecond)
 	bl.SetConnLimits(writeBytesPerSecond, readBytesPerSecond)
 	

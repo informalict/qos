@@ -1,6 +1,8 @@
 package bandwidth
 
 import (
+	"math"
+
 	"golang.org/x/time/rate"
 )
 
@@ -13,7 +15,7 @@ type config struct {
 // When burst is not provided, or it is <=0 then it be the same as limit.
 func NewConfig(limit rate.Limit, burst ...int) config {
 	if limit <= 0 || limit == rate.Inf {
-		return config{limit: rate.Inf, burst: 0}
+		return config{limit: rate.Inf, burst: math.MaxInt}
 	}
 
 	c := config{

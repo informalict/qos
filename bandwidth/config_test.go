@@ -1,6 +1,7 @@
 package bandwidth
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,7 @@ func TestNewConfig(t *testing.T) {
 			burst: nil,
 			want: config{
 				limit: rate.Inf,
+				burst: math.MaxInt,
 			},
 		},
 		"infinite config case 2": {
@@ -26,6 +28,7 @@ func TestNewConfig(t *testing.T) {
 			burst: []int{1, 2, 3},
 			want: config{
 				limit: rate.Inf,
+				burst: math.MaxInt,
 			},
 		},
 		"infinite config case 3": {
@@ -33,6 +36,7 @@ func TestNewConfig(t *testing.T) {
 			burst: []int{20},
 			want: config{
 				limit: rate.Inf,
+				burst: math.MaxInt,
 			},
 		},
 		"adjust burst": {
@@ -66,7 +70,7 @@ func TestNewConfig(t *testing.T) {
 func TestUnlimitedConfig(t *testing.T) {
 	c := NewUnlimitedConfig()
 	assert.Equal(t, rate.Inf, c.limit)
-	assert.Equal(t, 0, c.burst)
+	assert.Equal(t, math.MaxInt, c.burst)
 }
 
 func TestIsTheSame(t *testing.T) {
