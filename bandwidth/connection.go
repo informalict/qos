@@ -56,7 +56,7 @@ func (bc *connection) Write(b []byte) (int, error) {
 	return bc.Conn.Write(b)
 }
 
-// Write writes bytes into connection with respect to global and connection limiter.
+// Read reads bytes from a connection with respect to global and connection limiter.
 func (bc *connection) Read(b []byte) (int, error) {
 	select {
 	case <-bc.c:
