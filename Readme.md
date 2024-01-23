@@ -26,8 +26,6 @@ func main() {
 	})
 
 	server := &http.Server{Addr: ":8080", Handler: mux}
-	server.ListenAndServe()
-
 	ln, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		log.Fatal("can not create tcp listner")
