@@ -15,7 +15,7 @@ import (
 
 /*
 IMPORTANT NOTE:
-Below test rely on time, we should not happen usually because operation can take different amount of time
+Below test rely on time, which should not happen usually because operation can take different amount of time
 depends on current state of a worker (computer).
 BUT our test should be consistent because:
 Example:

@@ -59,7 +59,7 @@ func (bl *listener) GetLimits() (config, config) {
 	return bl.limitCfgGlobal, bl.limitCfgConn
 }
 
-// SetLimits sets global limits for writing and reading.
+// SetLimits sets global and connection limits for writing and reading.
 func (bl *listener) SetLimits(globalCfg, connCfg config) {
 	bl.mutex.Lock()
 	defer bl.mutex.Unlock()
