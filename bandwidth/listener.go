@@ -82,13 +82,8 @@ func (bl *listener) SetLimits(globalCfg, connCfg config) {
 	bl.limitCfgConn = connCfg
 }
 
-// WaitWriteN waits until global limiter allows for writing n bytes.
-func (bl *listener) WaitWriteN(ctx context.Context, n int) error {
-	return bl.sharedLimiter.WaitN(ctx, n)
-}
-
-// WaitReadN waits until global limiter allows for reading n bytes.
-func (bl *listener) WaitReadN(ctx context.Context, n int) error {
+// WaitN waits until global limiter allows for operating on n bytes.
+func (bl *listener) WaitN(ctx context.Context, n int) error {
 	return bl.sharedLimiter.WaitN(ctx, n)
 }
 
