@@ -16,18 +16,12 @@ type listener struct {
 	// c is closed when configuration for connections is changed, so all existing connections can read new config.
 	c     chan struct{}
 	mutex sync.RWMutex
-	// limitReadConn is current read limit config for connection.
-	limitReadConn config
-	// limitReadConn is current write limit config for connection.
-	limitWriteConn config
-	// limitReadConn is current global read limit.
-	limitReadGlobal config
-	// limitReadConn is current global write limit.
-	limitWriteGlobal config
-	// writeLimiter is a shared global rate limiter across all connections.
-	writeLimiter *rate.Limiter
-	// readLimiter is a shared global rate limiter across all connections.
-	readLimiter *rate.Limiter
+	// limitCfgConn is current limit config for a connection.
+	limitCfgConn config
+	// limitCfgGlobal is a current global limit.
+	limitCfgGlobal config
+	// sharedLimiter is a shared global rate limiter across all connections.
+	sharedLimiter *rate.Limiter
 }
 
 // NewListener returns bandwidth listener with default infinite global and connection limiters.
@@ -39,67 +33,43 @@ func NewListener(ctx context.Context, l net.Listener) *listener {
 
 	unlimited := NewUnlimitedConfig()
 	return &listener{
-		Listener:         l,
-		ctx:              ctx,
-		c:                make(chan struct{}),
-		limitReadGlobal:  unlimited,
-		limitWriteGlobal: unlimited,
-		limitReadConn:    unlimited,
-		limitWriteConn:   unlimited,
-		readLimiter:      unlimited.NewRateLimiter(),
-		writeLimiter:     unlimited.NewRateLimiter(),
+		Listener:       l,
+		ctx:            ctx,
+		c:              make(chan struct{}),
+		limitCfgConn:   unlimited,
+		limitCfgGlobal: unlimited,
+		sharedLimiter:  unlimited.NewRateLimiter(),
 	}
 }
 
-// GetConnCfgs returns write and read connection config.
+// GetConnCfg returns connection config.
 // It also returns channel, which will be closed when configuration is changed.
-func (bl *listener) GetConnCfgs() (<-chan struct{}, config, config) {
+func (bl *listener) GetConnCfg() (<-chan struct{}, config) {
 	bl.mutex.RLock()
 	defer bl.mutex.RUnlock()
 
-	return bl.c, bl.limitWriteConn, bl.limitReadConn
+	return bl.c, bl.limitCfgConn
 }
 
-// GetGlobalLimits gets global limits for writing and reading from a connection.
-func (bl *listener) GetGlobalLimits() (config, config) {
+// GetLimits returns global and connection limits.
+func (bl *listener) GetLimits() (config, config) {
 	bl.mutex.RLock()
 	defer bl.mutex.RUnlock()
 
-	return bl.limitWriteGlobal, bl.limitReadGlobal
+	return bl.limitCfgGlobal, bl.limitCfgConn
 }
 
-// GetConnLimits gets limits per connection for writing and reading.
-func (bl *listener) GetConnLimits() (config, config) {
-	// Here mutex blocks new connections and writing, and reading.
-	// It happens once in a lifetime, and it is quick non-blocking operation it is allowed.
-	bl.mutex.RLock()
-	defer bl.mutex.RUnlock()
-
-	return bl.limitWriteConn, bl.limitReadConn
-}
-
-// SetGlobalLimits sets global limits for writing and reading.
-func (bl *listener) SetGlobalLimits(writeGlobal, readGlobal config) {
+// SetLimits sets global limits for writing and reading.
+func (bl *listener) SetLimits(globalCfg, connCfg config) {
 	bl.mutex.Lock()
 	defer bl.mutex.Unlock()
 
-	bl.limitWriteGlobal = writeGlobal
-	bl.writeLimiter.SetLimit(writeGlobal.limit)
-	bl.writeLimiter.SetBurst(writeGlobal.burst)
-	bl.limitReadGlobal = readGlobal
-	bl.readLimiter.SetLimit(readGlobal.limit)
-	bl.readLimiter.SetBurst(readGlobal.burst)
-}
+	bl.limitCfgGlobal = globalCfg
+	bl.sharedLimiter.SetLimit(globalCfg.limit)
+	bl.sharedLimiter.SetBurst(globalCfg.burst)
 
-// SetConnLimits sets limit per connection for writing and reading.
-func (bl *listener) SetConnLimits(writeConn, readConn config) {
-	// Here mutex blocks new connections and writing, and reading.
-	// It happens once in a lifetime, and it is quick non-blocking operation it is allowed.
-	bl.mutex.Lock()
-	defer bl.mutex.Unlock()
-
-	if bl.limitWriteConn.IsTheSame(writeConn) && bl.limitReadConn.IsTheSame(readConn) {
-		// Nothing changes.
+	if bl.limitCfgConn.IsTheSame(connCfg) {
+		// Nothing changes for connections.
 		return
 	}
 
@@ -109,18 +79,17 @@ func (bl *listener) SetConnLimits(writeConn, readConn config) {
 	close(bl.c)
 	bl.c = make(chan struct{})
 
-	bl.limitWriteConn = writeConn
-	bl.limitReadConn = readConn
+	bl.limitCfgConn = connCfg
 }
 
 // WaitWriteN waits until global limiter allows for writing n bytes.
 func (bl *listener) WaitWriteN(ctx context.Context, n int) error {
-	return bl.writeLimiter.WaitN(ctx, n)
+	return bl.sharedLimiter.WaitN(ctx, n)
 }
 
 // WaitReadN waits until global limiter allows for reading n bytes.
 func (bl *listener) WaitReadN(ctx context.Context, n int) error {
-	return bl.readLimiter.WaitN(ctx, n)
+	return bl.sharedLimiter.WaitN(ctx, n)
 }
 
 // Accept returns accepted bandwidth connection.
@@ -135,11 +104,10 @@ func (bl *listener) Accept() (net.Conn, error) {
 	defer bl.mutex.RUnlock()
 
 	return &connection{
-		Conn:             conn,
-		ctx:              bl.ctx,
-		connWriteLimiter: bl.limitWriteConn.NewRateLimiter(),
-		connReadLimiter:  bl.limitReadConn.NewRateLimiter(),
-		controller:       bl,
+		Conn:       conn,
+		ctx:        bl.ctx,
+		limiter:    bl.limitCfgConn.NewRateLimiter(),
+		controller: bl,
 		// pass read only channel, which will be closed when config is changed.
 		c: bl.c,
 	}, nil

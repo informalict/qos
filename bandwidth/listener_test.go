@@ -43,6 +43,83 @@ const (
 
 type OperationFunc func() int
 
+// TestReadAndWriteAtTheSameTime tests if write and read block each other because of limiter.
+func TestReadAndWriteAtTheSameTime(tOuter *testing.T) {
+	tOuter.Run("global limiting with simultaneous read and writes", func(t *testing.T) {
+		t.Parallel()
+		var limit rate.Limit = 10
+		expectedBytes := 40
+
+		bl := NewListener(context.Background(), mockListener{})
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(limit), connLimit)
+		conn := acceptT(t, bl)
+		b := newSlice(int(limit))
+
+		var op OperationFunc = func() int {
+			var counter1, counter2 int
+			wg := sync.WaitGroup{}
+			howManyClients := 2
+			wg.Add(howManyClients)
+			go func() {
+				defer wg.Done()
+				for counter1 != expectedBytes/howManyClients {
+					counter1 += writeT(t, conn, b)
+				}
+			}()
+			go func() {
+				defer wg.Done()
+				for counter2 != expectedBytes/howManyClients {
+					counter2 += readT(t, conn, b)
+				}
+			}()
+
+			wg.Wait()
+
+			return counter1 + counter2
+		}
+
+		checkRate(t, expectedBytes, getRealSeconds(time.Second*4), op)
+	})
+
+	tOuter.Run("connection limiting with simultaneous read and writes", func(t *testing.T) {
+		t.Parallel()
+		var limit rate.Limit = 10
+		expectedBytes := 40
+
+		bl := NewListener(context.Background(), mockListener{})
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(limit))
+		conn := acceptT(t, bl)
+		b := newSlice(int(limit))
+
+		var op OperationFunc = func() int {
+			var counter1, counter2 int
+			wg := sync.WaitGroup{}
+			howManyClients := 2
+			wg.Add(howManyClients)
+			go func() {
+				defer wg.Done()
+				for counter1 != expectedBytes/howManyClients {
+					counter1 += writeT(t, conn, b)
+				}
+			}()
+			go func() {
+				defer wg.Done()
+				for counter2 != expectedBytes/howManyClients {
+					counter2 += readT(t, conn, b)
+				}
+			}()
+
+			wg.Wait()
+
+			return counter1 + counter2
+		}
+
+		checkRate(t, expectedBytes, getRealSeconds(time.Second*4), op)
+	})
+}
+
 // TestLongDuration runs long tests and check if rate is expected.
 func TestLongDuration(tOuter *testing.T) {
 	if testing.Short() {
@@ -61,8 +138,8 @@ func TestLongDuration(tOuter *testing.T) {
 		defer cancel()
 
 		bl := NewListener(ctx, mockListener{})
-		_, cr := bl.GetConnLimits()
-		bl.SetConnLimits(NewConfig(rateLimit), cr)
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(rateLimit), connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(int(rateLimit))
 
@@ -90,8 +167,8 @@ func TestLongDuration(tOuter *testing.T) {
 		defer cancel()
 
 		bl := NewListener(ctx, mockListener{})
-		cw, _ := bl.GetConnLimits()
-		bl.SetConnLimits(cw, NewConfig(rateLimit))
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(rateLimit))
 		conn := acceptT(t, bl)
 		b := newSlice(int(rateLimit))
 
@@ -119,8 +196,8 @@ func TestLongDuration(tOuter *testing.T) {
 		defer cancel()
 
 		bl := NewListener(ctx, mockListener{})
-		_, gr := bl.GetGlobalLimits()
-		bl.SetGlobalLimits(NewConfig(rateLimit), gr)
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(rateLimit), connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(int(rateLimit))
 
@@ -148,8 +225,8 @@ func TestLongDuration(tOuter *testing.T) {
 		defer cancel()
 
 		bl := NewListener(ctx, mockListener{})
-		gw, _ := bl.GetGlobalLimits()
-		bl.SetGlobalLimits(gw, NewConfig(rateLimit))
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(rateLimit))
 
 		conn := acceptT(t, bl)
 		b := newSlice(int(rateLimit))
@@ -179,8 +256,8 @@ func TestOneConnectionManyClients(tOuter *testing.T) {
 		expectedBytes := 40
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, cr := bl.GetConnLimits()
-		bl.SetConnLimits(NewConfig(limit), cr)
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(limit), connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(int(limit))
 
@@ -215,8 +292,8 @@ func TestOneConnectionManyClients(tOuter *testing.T) {
 		expectedBytes := 40
 
 		bl := NewListener(context.Background(), mockListener{})
-		cw, _ := bl.GetConnLimits()
-		bl.SetConnLimits(cw, NewConfig(limit))
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(limit))
 		conn := acceptT(t, bl)
 		b := newSlice(int(limit))
 
@@ -255,8 +332,8 @@ func TestTwoConnections(tOuter *testing.T) {
 		expectedBytes1, expectedBytes2 := 50, 40
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, gr := bl.GetGlobalLimits()
-		bl.SetGlobalLimits(NewConfig(rateGlobal), gr)
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(rateGlobal), connLimit)
 		conn1 := acceptT(t, bl)
 		conn2 := acceptT(t, bl)
 
@@ -292,8 +369,8 @@ func TestTwoConnections(tOuter *testing.T) {
 		expectedBytes1, expectedBytes2 := 50, 40
 
 		bl := NewListener(context.Background(), mockListener{})
-		gw, _ := bl.GetGlobalLimits()
-		bl.SetGlobalLimits(gw, NewConfig(rateGlobal))
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(rateGlobal), connLimit)
 		conn1 := acceptT(t, bl)
 		conn2 := acceptT(t, bl)
 
@@ -329,8 +406,8 @@ func TestTwoConnections(tOuter *testing.T) {
 		expectedBytes1, expectedBytes2 := 50, 40
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, cr := bl.GetConnLimits()
-		bl.SetConnLimits(NewConfig(rateConn), cr)
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(rateConn))
 		conn1 := acceptT(t, bl)
 		conn2 := acceptT(t, bl)
 
@@ -366,8 +443,8 @@ func TestTwoConnections(tOuter *testing.T) {
 		expectedBytes1, expectedBytes2 := 50, 40
 
 		bl := NewListener(context.Background(), mockListener{})
-		cw, _ := bl.GetConnLimits()
-		bl.SetConnLimits(cw, NewConfig(rateConn))
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(rateConn))
 		conn1 := acceptT(t, bl)
 		conn2 := acceptT(t, bl)
 
@@ -401,29 +478,19 @@ func TestTwoConnections(tOuter *testing.T) {
 func TestCheckDefaultSettings(t *testing.T) {
 	ml := mockListener{}
 	bl := NewListener(context.Background(), ml)
-	gw, gr := bl.GetGlobalLimits()
-	cw, cr := bl.GetConnLimits()
+	globalLimit, connLimit := bl.GetLimits()
 	unlimited := NewUnlimitedConfig()
-	assert.Equal(t, unlimited, gw)
-	assert.Equal(t, unlimited, gr)
-	assert.Equal(t, unlimited, cw)
-	assert.Equal(t, unlimited, cr)
+	assert.Equal(t, unlimited, globalLimit)
+	assert.Equal(t, unlimited, connLimit)
 }
 
 func TestCheckConfigs(t *testing.T) {
 	ml := mockListener{}
 	bl := NewListener(context.Background(), ml)
-
-	bl.SetGlobalLimits(NewConfig(100, -1), NewConfig(100))
-	bl.SetConnLimits(NewConfig(100, 10), NewConfig(-100, 20))
-
-	gw, gr := bl.GetGlobalLimits()
-	cw, cr := bl.GetConnLimits()
-
-	assert.Equal(t, NewConfig(100, 100), gw)
-	assert.Equal(t, NewConfig(100, 100), gr)
-	assert.Equal(t, NewConfig(100, 10), cw)
-	assert.Equal(t, NewUnlimitedConfig(), cr)
+	bl.SetLimits(NewConfig(100, -1), NewConfig(100))
+	globalLimit, connLimit := bl.GetLimits()
+	assert.Equal(t, NewConfig(100, 100), globalLimit)
+	assert.Equal(t, NewConfig(100, 100), connLimit)
 }
 
 // TestSetLimitsPerConnection tests simple connection rate limiter cases.
@@ -431,13 +498,13 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 	tOuter.Run("write 20 bytes in 2 seconds", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s.
 		expectedBytes := 20
 		howManyRounds := 2
 		rateBps := expectedBytes / howManyRounds
-		cw = NewConfig(rate.Limit(rateBps))
-		bl.SetConnLimits(cw, cr)
+		connLimit = NewConfig(rate.Limit(rateBps))
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -458,13 +525,13 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 	tOuter.Run("read 20 bytes in 2 seconds", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s.
 		expectedBytes := 20
 		howManyRounds := 2
 		rateBps := expectedBytes / howManyRounds
-		cr = NewConfig(rate.Limit(rateBps))
-		bl.SetConnLimits(cw, cr)
+		connLimit = NewConfig(rate.Limit(rateBps))
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -485,12 +552,12 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 	tOuter.Run("write 20 bytes immediately, because burst is enough", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s and burst to 20, so it should be able to write 20 bytes immediately.
 		rateBps := 10
 		burst := 20
-		cw = NewConfig(rate.Limit(rateBps), burst)
-		bl.SetConnLimits(cw, cr)
+		connLimit = NewConfig(rate.Limit(rateBps), burst)
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -507,12 +574,12 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 	tOuter.Run("read 20 bytes immediately, because burst is enough", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s and burst to 20, so it should be able to write 20 bytes immediately.
 		rateBps := 10
 		burst := 20
-		cr = NewConfig(rate.Limit(rateBps), burst)
-		bl.SetConnLimits(cw, cr)
+		connLimit = NewConfig(rate.Limit(rateBps), burst)
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -528,12 +595,12 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 	tOuter.Run("burst exploded when reading from connection", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s and burst to 20, so it should be able to write 20 bytes immediately.
 		rateBps := 10
 		burst := 5
-		cr = NewConfig(rate.Limit(rateBps), burst)
-		bl.SetConnLimits(cw, cr)
+		connLimit = NewConfig(rate.Limit(rateBps), burst)
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -546,11 +613,11 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		bl := NewListener(ctx, mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 2 B/s.
 		rateBps := 2
-		cw = NewConfig(rate.Limit(rateBps))
-		bl.SetConnLimits(cw, cr)
+		globalLimit = NewConfig(rate.Limit(rateBps))
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -578,11 +645,11 @@ func TestSetLimitsPerConnection(tOuter *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		bl := NewListener(ctx, mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 2 B/s.
 		rateBps := 2
-		cr = NewConfig(rate.Limit(rateBps))
-		bl.SetConnLimits(cw, cr)
+		connLimit = NewConfig(rate.Limit(rateBps))
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -611,13 +678,13 @@ func TestSetLimitsGlobal(tOuter *testing.T) {
 	tOuter.Run("write 50 bytes in 5 seconds", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		gw, gr := bl.GetGlobalLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s.
 		expectedBytes := 50
 		howManyRounds := 5
 		rateBps := expectedBytes / howManyRounds
-		gw = NewConfig(rate.Limit(rateBps))
-		bl.SetGlobalLimits(gw, gr)
+		globalLimit = NewConfig(rate.Limit(rateBps))
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 
@@ -638,13 +705,13 @@ func TestSetLimitsGlobal(tOuter *testing.T) {
 	tOuter.Run("read 30 bytes in 3 seconds", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		gw, gr := bl.GetGlobalLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set rate 10 B/s.
 		expectedBytes := 30
 		howManyRounds := 3
 		rateBps := expectedBytes / howManyRounds
-		gr = NewConfig(rate.Limit(rateBps))
-		bl.SetGlobalLimits(gw, gr)
+		connLimit = NewConfig(rate.Limit(rateBps))
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(rateBps)
 		var op OperationFunc = func() int {
@@ -667,12 +734,11 @@ func TestGetNewConfig(tOuter *testing.T) {
 	tOuter.Run("trigger channel when connection configuration is changed", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := NewConfig(10), NewConfig(20)
-		oldChannel, _, _ := bl.GetConnCfgs()
-		bl.SetConnLimits(cw, cr)
-		newChannel, newCW, newCR := bl.GetConnCfgs()
-		assert.Equal(t, cw, newCW)
-		assert.Equal(t, cr, newCR)
+		globalLimit, connLimnit := NewConfig(10), NewConfig(20)
+		oldChannel, _ := bl.GetConnCfg()
+		bl.SetLimits(globalLimit, connLimnit)
+		newChannel, newConnCfg := bl.GetConnCfg()
+		assert.Equal(t, connLimnit, newConnCfg)
 		closed := false
 		select {
 		case _, ok := <-oldChannel:
@@ -693,12 +759,11 @@ func TestGetNewConfig(tOuter *testing.T) {
 	tOuter.Run("don't trigger channel when connection configuration is the same", func(t *testing.T) {
 		t.Parallel()
 		bl := NewListener(context.Background(), mockListener{})
-		cw, cr := bl.GetConnLimits()
+		globalLimit, connLimit := bl.GetLimits()
 		// Set the same values, so configuration should not change.
-		bl.SetConnLimits(cw, cr)
-		newChannel, newCW, newCR := bl.GetConnCfgs()
-		assert.Equal(t, cw, newCW)
-		assert.Equal(t, cr, newCR)
+		bl.SetLimits(globalLimit, connLimit)
+		newChannel, newConnCfg := bl.GetConnCfg()
+		assert.Equal(t, connLimit, newConnCfg)
 
 		closed := true
 		select {
@@ -718,8 +783,8 @@ func TestChangeLimits(tOuter *testing.T) {
 		expectedBytes := 50
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, gr := bl.GetGlobalLimits()
-		bl.SetGlobalLimits(NewConfig(rate1), gr)
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(rate1), connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(int(rate1))
 
@@ -730,7 +795,7 @@ func TestChangeLimits(tOuter *testing.T) {
 				counter += writeT(t, conn, b)
 				if i == 1 {
 					// Change rate.
-					bl.SetGlobalLimits(NewConfig(rate2), gr)
+					bl.SetLimits(NewConfig(rate2), connLimit)
 					b = newSlice(int(rate2))
 				}
 				i++
@@ -751,8 +816,8 @@ func TestChangeLimits(tOuter *testing.T) {
 		expectedBytes := 50
 
 		bl := NewListener(context.Background(), mockListener{})
-		gw, _ := bl.GetGlobalLimits()
-		bl.SetGlobalLimits(gw, NewConfig(rate1))
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(rate1))
 		conn := acceptT(t, bl)
 		b := newSlice(int(rate1))
 
@@ -763,7 +828,7 @@ func TestChangeLimits(tOuter *testing.T) {
 				counter += readT(t, conn, b)
 				if i == 1 {
 					// Change rate.
-					bl.SetGlobalLimits(gw, NewConfig(rate2))
+					bl.SetLimits(globalLimit, NewConfig(rate2))
 					b = newSlice(int(rate2))
 				}
 				i++
@@ -784,8 +849,8 @@ func TestChangeLimits(tOuter *testing.T) {
 		expectedBytes := 50
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, cr := bl.GetConnLimits()
-		bl.SetConnLimits(NewConfig(rate1), cr)
+		_, connLimit := bl.GetLimits()
+		bl.SetLimits(NewConfig(rate1), connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(int(rate1))
 
@@ -796,7 +861,7 @@ func TestChangeLimits(tOuter *testing.T) {
 				counter += writeT(t, conn, b)
 				if i == 1 {
 					// Change rate.
-					bl.SetConnLimits(NewConfig(rate2), cr)
+					bl.SetLimits(NewConfig(rate2), connLimit)
 					b = newSlice(int(rate2))
 				}
 				i++
@@ -817,8 +882,8 @@ func TestChangeLimits(tOuter *testing.T) {
 		expectedBytes := 50
 
 		bl := NewListener(context.Background(), mockListener{})
-		cw, _ := bl.GetConnLimits()
-		bl.SetConnLimits(cw, NewConfig(rate1))
+		globalLimit, _ := bl.GetLimits()
+		bl.SetLimits(globalLimit, NewConfig(rate1))
 		conn := acceptT(t, bl)
 		b := newSlice(int(rate1))
 
@@ -829,7 +894,7 @@ func TestChangeLimits(tOuter *testing.T) {
 				counter += readT(t, conn, b)
 				if i == 1 {
 					// Change rate.
-					bl.SetConnLimits(cw, NewConfig(rate2))
+					bl.SetLimits(globalLimit, NewConfig(rate2))
 					b = newSlice(int(rate2))
 				}
 				i++
@@ -864,9 +929,9 @@ func TestGlobalAndConnectionLimits(tOuter *testing.T) {
 		t.Parallel()
 
 		bl := NewListener(context.Background(), mockListener{})
-		cw, _ := bl.GetConnLimits()
-		bl.SetConnLimits(cw, NewConfig(rateConn))
-		gw, _ := bl.GetGlobalLimits()
+		globalLimit, _ := bl.GetLimits()
+		connLimit := NewConfig(rateConn)
+		bl.SetLimits(globalLimit, connLimit)
 		conn := acceptT(t, bl)
 		b := newSlice(int(rateConn))
 
@@ -876,8 +941,7 @@ func TestGlobalAndConnectionLimits(tOuter *testing.T) {
 			for counter != expectedBytes {
 				counter += readT(t, conn, b)
 				if i == 1 {
-					// Change rate.
-					bl.SetGlobalLimits(gw, NewConfig(rateGlobal))
+					bl.SetLimits(NewConfig(rateGlobal), connLimit)
 					b = newSlice(int(rateGlobal))
 				}
 				i++
@@ -893,9 +957,10 @@ func TestGlobalAndConnectionLimits(tOuter *testing.T) {
 		t.Parallel()
 
 		bl := NewListener(context.Background(), mockListener{})
-		_, cr := bl.GetConnLimits()
-		bl.SetConnLimits(NewConfig(rateConn), cr)
-		_, gr := bl.GetGlobalLimits()
+		globalLimit, _ := bl.GetLimits()
+		connLimit := NewConfig(rateConn)
+		bl.SetLimits(globalLimit, connLimit)
+
 		conn := acceptT(t, bl)
 		b := newSlice(int(rateConn))
 
@@ -906,7 +971,8 @@ func TestGlobalAndConnectionLimits(tOuter *testing.T) {
 				counter += writeT(t, conn, b)
 				if i == 1 {
 					// Change rate.
-					bl.SetGlobalLimits(NewConfig(rateGlobal), gr)
+					//bl.SetGlobalLimits(NewConfig(rateGlobal), gr)
+					bl.SetLimits(NewConfig(rateGlobal), connLimit)
 					b = newSlice(int(rateGlobal))
 				}
 				i++
@@ -1014,7 +1080,7 @@ func getRealSeconds(t time.Duration) time.Duration {
 	return t - time.Second
 }
 
-// checkR1ate checks actual rate if it is included in threshold -/+5%.
+// checkRate checks actual rate if it is included in threshold -/+5%.
 func checkRate(t *testing.T, expectedBytes int, expectedSeconds time.Duration, op OperationFunc) {
 	require.GreaterOrEqual(t, expectedSeconds, time.Second, "operation must take more than 1 second")
 
