@@ -37,10 +37,9 @@ func main() {
 	// burst describes how many bytes can be performed within one call of rate limiter.
 	// usually it is the same value as bytesPerSecond.
 	burst := 1000
-	writeBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
-	readBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
-	bl.SetGlobalLimits(writeBytesPerSecond, readBytesPerSecond)
-	bl.SetConnLimits(writeBytesPerSecond, readBytesPerSecond)
+	globalBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
+	connBytesPerSecond := bandwidth.NewConfig(bytesPerSecond, burst)
+	bl.SetLimits(globalBytesPerSecond, connBytesPerSecond)
 	
 	err = server.Serve(bl)
 	if err != nil {
